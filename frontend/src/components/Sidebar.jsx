@@ -8,7 +8,8 @@ import {
   TrendingUp, 
   Terminal, 
   Link2,
-  X
+  X,
+  Activity
 } from "lucide-react";
 
 export default function Sidebar({ currentPage, jobId, setPage, resetUpload, sidebarOpen, setSidebarOpen }) {
@@ -51,6 +52,27 @@ export default function Sidebar({ currentPage, jobId, setPage, resetUpload, side
       icon: Terminal,
       pageKey: "api-keys",
       disabled: false
+    }
+  ];
+
+  const v2Items = [
+    {
+      name: "Sandbox Deployer",
+      icon: Terminal,
+      pageKey: "v2-upload",
+      disabled: false
+    },
+    {
+      name: "Telemetry Trace",
+      icon: Activity,
+      pageKey: "v2-results",
+      disabled: !jobId
+    },
+    {
+      name: "AI Investigation",
+      icon: FileText,
+      pageKey: "v2-report",
+      disabled: !jobId
     }
   ];
 
@@ -123,6 +145,47 @@ export default function Sidebar({ currentPage, jobId, setPage, resetUpload, side
                     className="flex items-center space-x-3 px-3 py-2 rounded-xl text-slate-700 cursor-not-allowed text-xs font-sans opacity-25 select-none"
                   >
                     <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{item.name}</span>
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  key={item.name}
+                  onClick={() => setPage(item.pageKey)}
+                  className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-xs transition-all text-left btn-premium-click group relative border ${
+                    isActive
+                      ? "bg-[#131920] border-white/[0.04] text-[#E8F5F2] font-semibold shadow-[0_4px_15px_rgba(0,0,0,0.6)]"
+                      : "border-transparent text-slate-400 hover:text-[#E8F5F2] hover:bg-white/[0.01]"
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 flex-shrink-0 transition-all ${isActive ? "text-[#007A8E]" : "text-slate-500 group-hover:scale-105 group-hover:text-white"}`} />
+                  <span className="font-sans">{item.name}</span>
+                  {isActive && (
+                    <span className="absolute left-0 top-1/3 bottom-1/3 w-0.5 rounded-full bg-[#007A8E]" />
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Sandbox v2 Workspace */}
+        <div className="space-y-2.5">
+          <span className="px-3 text-[8px] uppercase font-bold tracking-[0.22em] text-slate-500 font-mono block">DYNAMIC SANDBOX (v2)</span>
+          <nav className="space-y-1">
+            {v2Items.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentPage === item.pageKey;
+              
+              if (item.disabled) {
+                return (
+                  <div
+                    key={item.name}
+                    className="flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-slate-700 cursor-not-allowed text-xs font-sans opacity-25 select-none"
+                  >
+                    <Icon className="w-4 h-4 flex-shrink-0" />
                     <span>{item.name}</span>
                   </div>
                 );
