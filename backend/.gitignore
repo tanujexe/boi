@@ -1,0 +1,42 @@
+# Logs
+logs/
+*.log
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Build and packaging artifacts
+.coverage
+.coverage.*
+htmlcov/
+build/
+pip-wheel-metadata/
+*.egg-info/
+
+# Local app data
+*.local
+.env
+.env.*
+sentinel_ai.db
+uploads/*
+test_apks/*
+
+# Editor and OS files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
