@@ -16,7 +16,13 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
   const [liveLogs, setLiveLogs] = useState([]);
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState("");
+  
   const terminalEndRef = useRef(null);
+  const terminalContainerRef = useRef(null);
+  
+  // Buffering queue for WebSocket telemetry events
+  const logQueue = useRef([]);
+  const animationFrameId = useRef(null);
 
   const fetchJobs = async () => {
     try {
@@ -34,10 +40,37 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
     fetchJobs();
   }, []);
 
-  // Auto scroll terminal logs
+  // Log throttling and capping at 200 logs
   useEffect(() => {
-    if (terminalEndRef.current) {
-      terminalEndRef.current.scrollIntoView({ behavior: "smooth" });
+    const flushLogs = () => {
+      if (logQueue.current.length > 0) {
+        const nextLogs = [...logQueue.current];
+        logQueue.current = [];
+        setLiveLogs(prev => {
+          const combined = [...prev, ...nextLogs];
+          if (combined.length > 200) {
+            return combined.slice(combined.length - 200);
+          }
+          return combined;
+        });
+      }
+      animationFrameId.current = requestAnimationFrame(flushLogs);
+    };
+    animationFrameId.current = requestAnimationFrame(flushLogs);
+    return () => {
+      if (animationFrameId.current) {
+        cancelAnimationFrame(animationFrameId.current);
+      }
+    };
+  }, []);
+
+  // Auto scroll terminal logs only when user is near bottom
+  useEffect(() => {
+    const el = terminalContainerRef.current;
+    if (!el) return;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (isNearBottom) {
+      el.scrollTop = el.scrollHeight;
     }
   }, [liveLogs]);
 
@@ -46,14 +79,22 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
     if (!activeJob) return;
 
     let ws = null;
+    let isMounted = true;
+
+    // Reset log buffer queue for a new run
+    logQueue.current = [];
+    setLiveLogs([]);
+
     const connectWS = () => {
       ws = new WebSocket(`ws://127.0.0.1:8000/api/v2/ws/${activeJob.id}`);
       
       ws.onopen = () => {
-        setLiveLogs(prev => [...prev, { type: "SYSTEM", text: "[SOCKET] Connected to dynamic analysis telemetry channel." }]);
+        if (!isMounted) return;
+        logQueue.current.push({ type: "SYSTEM", text: "[SOCKET] Connected to dynamic analysis telemetry channel." });
       };
       
       ws.onmessage = (event) => {
+        if (!isMounted) return;
         try {
           const data = JSON.parse(event.data);
           
@@ -61,14 +102,16 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
             setStage(data.status);
             if (data.status === "COMPLETED") {
               setProgress(100);
-              setLiveLogs(prev => [...prev, { type: "SYSTEM", text: `[COMPLETE] Sandbox execution finished. Risk: ${data.risk_score} (${data.severity})` }]);
+              logQueue.current.push({ type: "SYSTEM", text: `[COMPLETE] Sandbox execution finished. Risk: ${data.risk_score} (${data.severity})` });
               fetchJobs(); // Refresh job list
             } else if (data.status === "FAILED") {
-              setLiveLogs(prev => [...prev, { type: "ERROR", text: `[CRITICAL_FAIL] Pipeline halted: ${data.error || "Unknown error"}` }]);
+              logQueue.current.push({ type: "ERROR", text: `[CRITICAL_FAIL] Pipeline halted: ${data.error || "Unknown error"}` });
+              fetchJobs();
+            } else if (data.status === "CANCELLED") {
+              logQueue.current.push({ type: "WARN", text: `[CANCELLED] Sandbox analysis terminated by user request.` });
               fetchJobs();
             }
           } else if (data.type === "LOG" || data.type === "SYSTEM") {
-            // Check for specific keywords to style logs
             let logType = "INFO";
             const text = data.message || "";
             if (text.includes("[SMS_SEND]") || text.includes("[DEX_LOAD]") || text.includes("exfiltration") || text.includes("SMS transmission")) {
@@ -80,7 +123,7 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
             } else if (text.includes("[SYSTEM") || text.includes("System:")) {
               logType = "SYSTEM";
             }
-            setLiveLogs(prev => [...prev, { type: logType, text }]);
+            logQueue.current.push({ type: logType, text });
           }
         } catch (err) {
           console.error("Failed to parse WS payload:", err);
@@ -88,7 +131,8 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
       };
 
       ws.onclose = () => {
-        setLiveLogs(prev => [...prev, { type: "SYSTEM", text: "[SOCKET] Connection closed." }]);
+        if (!isMounted) return;
+        logQueue.current.push({ type: "SYSTEM", text: "[SOCKET] Connection closed." });
       };
 
       ws.onerror = (err) => {
@@ -104,9 +148,10 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
         const res = await fetch(`http://127.0.0.1:8000/api/v2/jobs/${activeJob.id}/status`);
         if (res.ok) {
           const statusData = await res.json();
+          if (!isMounted) return;
           setProgress(statusData.progress);
           setStage(statusData.status);
-          if (statusData.status === "COMPLETED" || statusData.status === "FAILED" || statusData.status === "TIMEOUT") {
+          if (statusData.status === "COMPLETED" || statusData.status === "FAILED" || statusData.status === "TIMEOUT" || statusData.status === "CANCELLED") {
             clearInterval(statusInterval);
             if (ws) ws.close();
             fetchJobs();
@@ -118,10 +163,30 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
     }, 4000);
 
     return () => {
+      isMounted = false;
       clearInterval(statusInterval);
       if (ws) ws.close();
     };
   }, [activeJob]);
+
+  const handleCancelJob = async () => {
+    if (!activeJob) return;
+    if (confirm("Are you sure you want to cancel the active analysis sandbox run?")) {
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/api/v2/jobs/${activeJob.id}/cancel`, {
+          method: "POST"
+        });
+        if (res.ok) {
+          setStage("CANCELLED");
+          logQueue.current.push({ type: "SYSTEM", text: "[USER_ACTION] Cancellation signal dispatched to backend." });
+          fetchJobs();
+        }
+      } catch (err) {
+        console.error("Error cancelling job:", err);
+      }
+    }
+  };
+
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -408,7 +473,10 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
             <div className="absolute inset-0 pointer-events-none crt-scanlines opacity-5 z-20" />
 
             {/* Terminal Screen content */}
-            <div className="flex-1 p-4 overflow-y-auto max-h-[300px] font-mono text-[10px] space-y-2 bg-[#06090d] text-slate-350 select-text">
+            <div 
+              ref={terminalContainerRef}
+              className="flex-1 p-4 overflow-y-auto max-h-[300px] font-mono text-[10px] space-y-2 bg-[#06090d] text-slate-350 select-text"
+            >
               {liveLogs.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center text-slate-600 italic py-16">
                   <Activity className="w-6 h-6 text-slate-700 mb-2 animate-pulse" />
@@ -456,7 +524,13 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
                   </div>
                   <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-white/[0.02] relative">
                     <div 
-                      className="bg-gradient-to-r from-[#007A8E] to-cyan-500 h-full rounded-full transition-all duration-500"
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        stage === "CANCELLED"
+                          ? "bg-slate-700"
+                          : stage === "FAILED"
+                          ? "bg-red-650"
+                          : "bg-gradient-to-r from-[#007A8E] to-cyan-500"
+                      }`}
                       style={{ width: `${progress}%` }}
                     />
                   </div>
@@ -469,6 +543,16 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
                   >
                     <span>VIEW REPORT</span>
                     <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {stage !== "COMPLETED" && stage !== "FAILED" && stage !== "CANCELLED" && (
+                  <button
+                    onClick={handleCancelJob}
+                    className="flex-shrink-0 flex items-center space-x-2 px-4 py-2 rounded-xl bg-red-950/20 border border-red-900/60 hover:bg-red-950/40 text-[10px] font-mono text-red-400 transition-all cursor-pointer animate-fade-in"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>CANCEL RUN</span>
                   </button>
                 )}
               </div>
