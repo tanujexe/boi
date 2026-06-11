@@ -13,6 +13,8 @@ from database import init_db
 from routes.jobs import router as jobs_router
 from routes.campaigns import router as campaigns_router
 from routes.keys import router as keys_router
+from v2.routes import router as v2_router
+from v2.database import init_v2_db
 
 app = FastAPI(
     title="SentinelAI Core API",
@@ -33,11 +35,13 @@ app.add_middleware(
 @app.on_event("startup")
 def startup_event():
     init_db()
+    init_v2_db()
 
 # Include Routers
 app.include_router(jobs_router)
 app.include_router(campaigns_router)
 app.include_router(keys_router)
+app.include_router(v2_router)
 
 from services.websocket_manager import manager
 
