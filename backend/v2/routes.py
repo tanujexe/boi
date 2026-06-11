@@ -237,6 +237,67 @@ def delete_analysis_job(job_id: str, db: Session = Depends(get_v2_db)):
     db.commit()
     return {"message": "Job successfully deleted."}
 
+@router.post("/jobs/{job_id}/cancel")
+def cancel_analysis_job(job_id: str, db: Session = Depends(get_v2_db)):
+    """
+    Cancel an active static/dynamic analysis job, detach Frida tracing, kill emulator process, and clean up guest environment.
+    """
+    job = db.query(V2Job).filter(V2Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Analysis job not found.")
+        
+    if job.status in ["COMPLETED", "FAILED", "CANCELLED"]:
+        return {"status": "ignored", "message": f"Job is already in {job.status} state."}
+        
+    job.status = "CANCELLED"
+    job.current_stage = "CANCELLED"
+    db.commit()
+    
+    # Active resource cleanup
+    from v2.orchestrator import ACTIVE_SESSIONS
+    session_info = ACTIVE_SESSIONS.get(job_id)
+    if session_info:
+        # 1. Detach Frida tracing session
+        frida_session = session_info.get("frida_session")
+        if frida_session:
+            try:
+                frida_session.detach()
+            except Exception:
+                pass
+                
+        # 2. Stop and uninstall package
+        package_name = session_info.get("package_name")
+        if package_name and package_name != "unknown.package":
+            try:
+                # Force stop package
+                subprocess.run([ADB_PATH, "shell", "pm", "force-stop", package_name], capture_output=True)
+                # Uninstall package
+                subprocess.run([ADB_PATH, "uninstall", package_name], capture_output=True)
+            except Exception:
+                pass
+                
+        # 3. Clean up temporary uploaded file on host
+        temp_path = session_info.get("temp_path")
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+                
+        # 4. Stop running emulator process
+        try:
+            res = subprocess.run([ADB_PATH, "devices"], capture_output=True, text=True, timeout=5)
+            if "emulator-" in res.stdout:
+                # Issue kill command to active emulator
+                subprocess.run([ADB_PATH, "emu", "kill"], capture_output=True)
+        except Exception:
+            pass
+            
+        # Remove from ACTIVE_SESSIONS registry
+        ACTIVE_SESSIONS.pop(job_id, None)
+        
+    return {"status": "cancelled", "message": "Job cancellation initiated successfully."}
+
 @router.get("/health", response_model=V2HealthResponse)
 def check_v2_health():
     """

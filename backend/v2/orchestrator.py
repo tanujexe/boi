@@ -23,6 +23,20 @@ try:
 except ImportError:
     HAS_FRIDA = False
 
+ACTIVE_SESSIONS = {}
+
+class JobCancelledException(Exception):
+    """Exception raised when an analysis job is cancelled by the user."""
+    pass
+
+def check_cancellation(job_id: str, db_sess: Session):
+    """Verify if the job status has transitioned to CANCELLED and raise exception if so."""
+    db_sess.expire_all()
+    job = db_sess.query(V2Job).filter(V2Job.id == job_id).first()
+    if job and job.status == "CANCELLED":
+        raise JobCancelledException("Job cancelled by user.")
+
+
 def broadcast_v2_log(job_id: str, message: str, mtype: str = "LOG"):
     """Helper to broadcast real-time logs to the WebSocket manager."""
     loop = asyncio.new_event_loop()
@@ -100,7 +114,15 @@ def run_v2_pipeline(job_id: str, apk_path: str):
         db.close()
         return
 
+    ACTIVE_SESSIONS[job_id] = {
+        "temp_path": apk_path,
+        "package_name": None,
+        "frida_session": None
+    }
+
     try:
+        check_cancellation(job_id, db)
+
         # ────────────────────────────────────────────────────────
         # STAGE 1: STATIC ANALYSIS
         # ────────────────────────────────────────────────────────
@@ -116,10 +138,16 @@ def run_v2_pipeline(job_id: str, apk_path: str):
         job.static_findings = static_findings
         job.progress = 25
         db.commit()
+        
+        if job_id in ACTIVE_SESSIONS:
+            ACTIVE_SESSIONS[job_id]["package_name"] = job.package_name
+
         broadcast_v2_log(job_id, f"Static analysis finished. Package name: {job.package_name}")
 
         is_simulated = "simulated_" in os.path.basename(apk_path) or not HAS_FRIDA
         
+        check_cancellation(job_id, db)
+
         # If static_only mode or no dynamic capability, proceed to scoring
         if job.analysis_mode == "static_only":
             broadcast_v2_log(job_id, "Analysis mode set to static_only. Skipping sandbox run.")
@@ -138,9 +166,13 @@ def run_v2_pipeline(job_id: str, apk_path: str):
             try:
                 # Run Live Sandbox Path
                 run_live_sandbox(job_id, job, apk_path, captured_events)
+            except JobCancelledException:
+                raise
             except Exception as e:
                 broadcast_v2_log(job_id, f"[WARNING] Live sandbox execution failed: {str(e)}. Falling back to high-fidelity simulation...", "WARN")
                 run_simulated_sandbox(job_id, job, captured_events)
+
+        check_cancellation(job_id, db)
 
         # ────────────────────────────────────────────────────────
         # STAGE 3: RESULT EXTRACTION & RISK SCORING
@@ -152,12 +184,38 @@ def run_v2_pipeline(job_id: str, apk_path: str):
         
         finalize_analysis(db, job, captured_events)
 
+    except JobCancelledException:
+        db.rollback()
+        # Fetch fresh ref
+        job = db.query(V2Job).filter(V2Job.id == job_id).first()
+        if job:
+            job.status = "CANCELLED"
+            job.current_stage = "CANCELLED"
+            job.error_message = "Analysis cancelled by user."
+            db.commit()
+        broadcast_v2_log(job_id, "Forensic pipeline cancelled by user.", "WARN")
+        
+        # Broadcast cancel state
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(manager.broadcast(job_id, {
+                "type": "STATUS_CHANGE",
+                "status": "CANCELLED",
+                "error": "User Cancelled"
+            }))
+        except Exception:
+            pass
+        finally:
+            loop.close()
+
     except Exception as e:
         db.rollback()
-        job.status = "FAILED"
-        job.current_stage = "FAILED"
-        job.error_message = str(e)
-        db.commit()
+        job = db.query(V2Job).filter(V2Job.id == job_id).first()
+        if job:
+            job.status = "FAILED"
+            job.current_stage = "FAILED"
+            job.error_message = str(e)
+            db.commit()
         broadcast_v2_log(job_id, f"Pipeline execution failed: {str(e)}")
         
         # Broadcast fail state
@@ -173,6 +231,7 @@ def run_v2_pipeline(job_id: str, apk_path: str):
         finally:
             loop.close()
     finally:
+        ACTIVE_SESSIONS.pop(job_id, None)
         db.close()
 
 def run_simulated_sandbox(job_id: str, job: V2Job, captured_events: list):
@@ -181,6 +240,12 @@ def run_simulated_sandbox(job_id: str, job: V2Job, captured_events: list):
     broadcast_v2_log(job_id, "Emulator check: Host toolings missing or simulated sample detected. Launching simulation sandbox...", "SYSTEM")
     time.sleep(1.5)
     
+    db_sess = SessionLocal()
+    try:
+        check_cancellation(job_id, db_sess)
+    finally:
+        db_sess.close()
+        
     broadcast_v2_log(job_id, "System: Emulator booted. Android 11 environment ready.", "SYSTEM")
     job.status = "EMULATOR_BOOT"
     job.current_stage = "EMULATOR_BOOT"
@@ -188,12 +253,24 @@ def run_simulated_sandbox(job_id: str, job: V2Job, captured_events: list):
     SessionLocal().query(V2Job).filter(V2Job.id == job_id).update({"status": "EMULATOR_BOOT", "progress": 35})
     time.sleep(1.5)
 
+    db_sess = SessionLocal()
+    try:
+        check_cancellation(job_id, db_sess)
+    finally:
+        db_sess.close()
+
     broadcast_v2_log(job_id, f"Deploying package '{job.package_name}' via ADB...", "INSTALLING")
     job.status = "INSTALLING"
     job.current_stage = "INSTALLING"
     job.progress = 45
     time.sleep(1.5)
     
+    db_sess = SessionLocal()
+    try:
+        check_cancellation(job_id, db_sess)
+    finally:
+        db_sess.close()
+
     broadcast_v2_log(job_id, "ADB: Package installation successful.", "SYSTEM")
     broadcast_v2_log(job_id, "Attaching Frida server (PID 4102) & deploying hook script...", "INSTRUMENTING")
     job.status = "INSTRUMENTING"
@@ -201,6 +278,12 @@ def run_simulated_sandbox(job_id: str, job: V2Job, captured_events: list):
     job.progress = 55
     time.sleep(2)
     
+    db_sess = SessionLocal()
+    try:
+        check_cancellation(job_id, db_sess)
+    finally:
+        db_sess.close()
+
     broadcast_v2_log(job_id, "Frida: 8 hooks successfully instrumentation-linked.", "SYSTEM")
     broadcast_v2_log(job_id, f"Launching main activity for '{job.package_name}'...", "RUNNING")
     job.status = "RUNNING"
@@ -244,6 +327,12 @@ def run_simulated_sandbox(job_id: str, job: V2Job, captured_events: list):
     # Stream out simulated events over time
     start_time = time.time()
     for i, (etype, name, payload, weight, susp) in enumerate(events_to_emit):
+        db_sess = SessionLocal()
+        try:
+            check_cancellation(job_id, db_sess)
+        finally:
+            db_sess.close()
+            
         time.sleep(2)
         elapsed = int((time.time() - start_time) * 1000)
         
@@ -275,6 +364,9 @@ def run_simulated_sandbox(job_id: str, job: V2Job, captured_events: list):
 
 def run_live_sandbox(job_id: str, job: V2Job, apk_path: str, captured_events: list):
     """Executes live Android sandbox orchestration using ADB and Frida."""
+    db_sess = SessionLocal()
+    check_cancellation(job_id, db_sess)
+
     # 1. Boot emulator
     if not boot_emulator(job_id):
         raise RuntimeError("Android Emulator failed to boot. Dynamic analysis aborted.")
@@ -282,9 +374,10 @@ def run_live_sandbox(job_id: str, job: V2Job, apk_path: str, captured_events: li
     job.status = "EMULATOR_BOOT"
     job.current_stage = "EMULATOR_BOOT"
     job.progress = 35
-    db_sess = SessionLocal()
     db_sess.query(V2Job).filter(V2Job.id == job_id).update({"status": "EMULATOR_BOOT", "progress": 35})
     db_sess.commit()
+
+    check_cancellation(job_id, db_sess)
 
     # 2. Install target package
     broadcast_v2_log(job_id, f"Deploying '{job.filename}' via ADB...")
@@ -298,6 +391,8 @@ def run_live_sandbox(job_id: str, job: V2Job, apk_path: str, captured_events: li
     if "Success" not in install_res.stdout:
         raise RuntimeError(f"ADB App Deployment failed: {install_res.stderr}")
     broadcast_v2_log(job_id, "ADB: Deployment verification successful.")
+
+    check_cancellation(job_id, db_sess)
 
     # 3. Enable frida-server
     broadcast_v2_log(job_id, "Checking frida-server state inside AVD...")
@@ -323,6 +418,8 @@ def run_live_sandbox(job_id: str, job: V2Job, apk_path: str, captured_events: li
 
     broadcast_v2_log(job_id, "Frida server verified running.")
 
+    check_cancellation(job_id, db_sess)
+
     # 4. Attach Frida
     # Validation of package name
     if not job.package_name or job.package_name == "unknown.package" or "." not in job.package_name:
@@ -346,6 +443,8 @@ def run_live_sandbox(job_id: str, job: V2Job, apk_path: str, captured_events: li
         pid = device.spawn([job.package_name])
         session = device.attach(pid)
         is_spawned = True
+        if job_id in ACTIVE_SESSIONS:
+            ACTIVE_SESSIONS[job_id]["frida_session"] = session
     except Exception as spawn_err:
         broadcast_v2_log(job_id, f"[WARNING] Frida spawn failed: {str(spawn_err)}. Attempting attach fallback launch...", "WARN")
         
@@ -353,10 +452,14 @@ def run_live_sandbox(job_id: str, job: V2Job, apk_path: str, captured_events: li
         subprocess.run([ADB_PATH, "shell", "monkey", "-p", job.package_name, "1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(3)
         
+        check_cancellation(job_id, db_sess)
+        
         try:
             # Attempt attaching to running process
             pid = device.get_process(job.package_name).pid
             session = device.attach(pid)
+            if job_id in ACTIVE_SESSIONS:
+                ACTIVE_SESSIONS[job_id]["frida_session"] = session
             broadcast_v2_log(job_id, f"Attached to spawned process (PID {pid}) via fallback.")
         except Exception as attach_err:
             broadcast_v2_log(job_id, f"[WARNING] Frida fallback attach failed: {str(attach_err)}.", "WARN")
@@ -412,7 +515,9 @@ def run_live_sandbox(job_id: str, job: V2Job, apk_path: str, captured_events: li
     # Wait loop + trigger actions to exercise UI
     elapsed_analysis = 0
     while elapsed_analysis < job.timeout_seconds:
+        check_cancellation(job_id, db_sess)
         time.sleep(10)
+        check_cancellation(job_id, db_sess)
         elapsed_analysis += 10  
         
         # Simulate touch events via monkey / adb
