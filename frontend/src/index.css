@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #070b0f;
+    color: #a0b2c6;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+}
+
+/* Custom Webkit Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #070b0e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #141c24;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #1f2b38;
+}
+
+/* Dot-Matrix Grid Background */
+.dot-matrix-bg {
+  background-image: radial-gradient(rgba(75, 156, 211, 0.035) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Atmospheric Glowing Spotlights */
+.radial-spotlight-primary {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(0, 122, 142, 0.08) 0%, transparent 70%);
+  filter: blur(85px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.radial-spotlight-secondary {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(75, 156, 211, 0.05) 0%, transparent 70%);
+  filter: blur(75px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Custom Bracket Corners for Cards */
+.bracket-card {
+  position: relative;
+  background: #0d1217;
+  border: 1px solid rgba(75, 156, 211, 0.05);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bracket-card::before, .bracket-card::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: rgba(0, 122, 142, 0.35);
+  border-style: solid;
+  pointer-events: none;
+  transition: all 0.35s ease;
+}
+
+.bracket-card::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1.5px 0 0 1.5px;
+  border-top-left-radius: 2px;
+}
+
+.bracket-card::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 1.5px 1.5px 0;
+  border-bottom-right-radius: 2px;
+}
+
+/* Hover brackets expand & highlight */
+.bracket-card:hover {
+  border-color: rgba(0, 122, 142, 0.18);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 122, 142, 0.02);
+}
+
+.bracket-card:hover::before, .bracket-card:hover::after {
+  border-color: #007A8E;
+  width: 12px;
+  height: 12px;
+}
+
+/* Blue/Steel bracket card variants */
+.bracket-card-blue::before, .bracket-card-blue::after {
+  border-color: rgba(75, 156, 211, 0.35);
+}
+.bracket-card-blue:hover::before, .bracket-card-blue:hover::after {
+  border-color: #4B9CD3;
+}
+.bracket-card-blue:hover {
+  border-color: rgba(75, 156, 211, 0.18);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8), 0 0 20px rgba(75, 156, 211, 0.02);
+}
+
+/* Typography styles */
+.font-display {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+
+.text-micro-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: #72879a;
+}
+
+/* Laser glow line separators */
+.laser-line-teal {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 122, 142, 0.35) 50%, transparent 100%);
+}
+
+.laser-line-blue {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(75, 156, 211, 0.35) 50%, transparent 100%);
+}
+
+/* Flowing data pulses keyframes */
+@keyframes pathPulse {
+  to {
+    stroke-dashoffset: -30;
+  }
+}
+
+.path-data-pulse {
+  stroke-dasharray: 6, 4;
+  animation: pathPulse 0.6s linear infinite;
+}
+
+/* Interactive scale clicks */
+.btn-premium-click {
+  transition: transform 0.1s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease;
+}
+.btn-premium-click:active {
+  transform: scale(0.96);
+}
+
+/* Terminal Emulator CRT & Scan lines overlay */
+.crt-terminal {
+  position: relative;
+  overflow: hidden;
+}
+
+.crt-terminal::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%), linear-gradient(90deg, rgba(75, 156, 211, 0.02), rgba(0, 122, 142, 0.01), rgba(232, 245, 242, 0.02));
+  z-index: 10;
+  background-size: 100% 3px, 3px 100%;
+  pointer-events: none;
+}

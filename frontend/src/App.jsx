@@ -1,0 +1,131 @@
+import React, { useState } from "react";
+import Sidebar from "./components/Sidebar";
+import UploadPage from "./components/UploadPage";
+import DashboardView from "./components/DashboardView";
+import EvidenceExplorer from "./components/EvidenceExplorer";
+import ThreatIntel from "./components/ThreatIntel";
+import InvestigationReport from "./components/InvestigationReport";
+import CampaignTriage from "./components/CampaignTriage";
+import ApiPlayground from "./components/ApiPlayground";
+import { Menu, X } from "lucide-react";
+
+function App() {
+  const [jobId, setJobId] = useState(null);
+  const [currentPage, setCurrentPage] = useState("upload");
+  const [loading, setLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const resetUpload = () => {
+    setJobId(null);
+    setCurrentPage("upload");
+    setSidebarOpen(false);
+  };
+
+  const setPage = (page) => {
+    setCurrentPage(page);
+    setSidebarOpen(false);
+  };
+
+  const renderContent = () => {
+    switch (currentPage) {
+      case "upload":
+        return (
+          <UploadPage
+            onSelectJob={(id) => {
+              setJobId(id);
+              setCurrentPage("dashboard");
+            }}
+            onStartLoading={() => setLoading(true)}
+            onStopLoading={() => setLoading(false)}
+            loading={loading}
+          />
+        );
+      case "dashboard":
+        return <DashboardView jobId={jobId} setPage={setPage} />;
+      case "evidence":
+        return <EvidenceExplorer jobId={jobId} setPage={setPage} />;
+      case "threat-intel":
+        return <ThreatIntel jobId={jobId} setPage={setPage} />;
+      case "report":
+        return <InvestigationReport jobId={jobId} setPage={setPage} />;
+      case "campaigns":
+        return (
+          <CampaignTriage
+            onSelectJob={(id) => {
+              setJobId(id);
+              setCurrentPage("dashboard");
+            }}
+            setPage={setPage}
+          />
+        );
+      case "api-keys":
+        return <ApiPlayground />;
+      default:
+        return (
+          <div className="flex-1 flex items-center justify-center font-mono text-xs text-slate-500">
+            Error: Page not found.
+          </div>
+        );
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#070b0f] text-slate-200 flex font-sans antialiased overflow-x-hidden relative">
+      
+      {/* Premium Dot-Matrix Background */}
+      <div className="absolute inset-0 dot-matrix-bg [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_90%,transparent_100%)] pointer-events-none opacity-45" />
+
+      {/* Global Ambient Glow Spotlights */}
+      <div className="radial-spotlight-primary -top-60 left-1/4" />
+      <div className="radial-spotlight-secondary top-1/2 right-1/4" />
+
+      {/* Backdrop overlay for mobile drawer */}
+      {sidebarOpen && (
+        <div 
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 lg:hidden"
+        />
+      )}
+
+      {/* Sidebar Navigation */}
+      <Sidebar
+        currentPage={currentPage}
+        jobId={jobId}
+        setPage={setPage}
+        resetUpload={resetUpload}
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+      />
+
+      {/* Main Contents Panel */}
+      <main className="flex-1 lg:ml-64 min-h-screen flex flex-col justify-start relative z-0">
+        
+        {/* Mobile top bar */}
+        <header className="lg:hidden h-14 border-b border-slate-900 bg-[#07090e]/85 backdrop-blur-md flex items-center justify-between px-4 sticky top-0 z-10">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-all cursor-pointer"
+              aria-label="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <span className="text-xs font-bold tracking-[0.2em] text-white font-mono">SENTINEL<span className="text-[#007A8E]">_AI</span></span>
+          </div>
+          {jobId && (
+            <div className="text-[10px] text-slate-500 font-mono">
+              Job: {jobId.slice(0, 8)}...
+            </div>
+          )}
+        </header>
+
+        <div className="flex-1 flex flex-col max-w-7xl w-full mx-auto p-4 md:p-6 lg:p-8 animate-fade-in" key={currentPage}>
+          {renderContent()}
+        </div>
+      </main>
+
+    </div>
+  );
+}
+
+export default App;
