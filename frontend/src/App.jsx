@@ -7,6 +7,9 @@ import ThreatIntel from "./components/ThreatIntel";
 import InvestigationReport from "./components/InvestigationReport";
 import CampaignTriage from "./components/CampaignTriage";
 import ApiPlayground from "./components/ApiPlayground";
+import V2UploadPage from "./components/v2/V2UploadPage";
+import V2ResultsPage from "./components/v2/V2ResultsPage";
+import V2ReportView from "./components/v2/V2ReportView";
 import { Menu, X } from "lucide-react";
 
 function App() {
@@ -17,7 +20,11 @@ function App() {
 
   const resetUpload = () => {
     setJobId(null);
-    setCurrentPage("upload");
+    if (currentPage && currentPage.startsWith("v2-")) {
+      setCurrentPage("v2-upload");
+    } else {
+      setCurrentPage("upload");
+    }
     setSidebarOpen(false);
   };
 
@@ -60,6 +67,21 @@ function App() {
         );
       case "api-keys":
         return <ApiPlayground />;
+      case "v2-upload":
+        return (
+          <V2UploadPage
+            onSelectJob={(id) => {
+              setJobId(id);
+              setCurrentPage("v2-results");
+            }}
+            onStartLoading={() => setLoading(true)}
+            onStopLoading={() => setLoading(false)}
+          />
+        );
+      case "v2-results":
+        return <V2ResultsPage jobId={jobId} setPage={setPage} />;
+      case "v2-report":
+        return <V2ReportView jobId={jobId} setPage={setPage} />;
       default:
         return (
           <div className="flex-1 flex items-center justify-center font-mono text-xs text-slate-500">
