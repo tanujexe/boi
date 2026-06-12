@@ -483,7 +483,7 @@ Sandbox runtime trace logged multiple sensitive API invocations bypassing normal
         for ev in dynamic_evs[:8]:
             etype = ev.event_type if hasattr(ev, "event_type") else ev.get("event_type")
             payload = ev.payload if hasattr(ev, "payload") else ev.get("payload", {})
-            tech_report += f"- **{etype.upper()} ({ev.source if hasattr(ev, "source") else ev.get("source")}):** {json.dumps(payload)}\n"
+            tech_report += f"- **{etype.upper()} ({ev.source if hasattr(ev, 'source') else ev.get('source')}):** {json.dumps(payload)}\n"
             
         tech_report += f"""
 #### 2. Static Metadata Correlation
@@ -505,7 +505,7 @@ The dynamic behaviors observed align precisely with static manifest privileges. 
                 elapsed = 0
             secs = int(elapsed / 1000)
             etype = ev.event_type if hasattr(ev, "event_type") else ev.get("event_type")
-            behavioral_summary += f"5. **00:{secs:02d}** Captured event: `{etype}` (Source: {ev.source if hasattr(ev, "source") else ev.get("source")})\n"
+            behavioral_summary += f"5. **00:{secs:02d}** Captured event: `{etype}` (Source: {ev.source if hasattr(ev, 'source') else ev.get('source')})\n"
             idx += 1
             if idx > 12:
                 break

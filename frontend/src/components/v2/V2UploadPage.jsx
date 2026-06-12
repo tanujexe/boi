@@ -278,22 +278,10 @@ export default function V2UploadPage({ onSelectJob, onStartLoading, onStopLoadin
     e.stopPropagation();
     if (confirm("Permanently purge this sandbox analysis log?")) {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/jobs/${jobId}`, {
-          // V2 reuses v1 delete path since database.py deletes cascading bindings, wait
-          // Actually v2 is in sentinel_v2.db so we should delete it using an endpoint.
-          // Wait, is there a delete endpoint for v2?
-          // Oh, in routes.py we did not declare DELETE /api/v2/jobs/{job_id}.
-          // Let's check if we can delete using the regular endpoint or let's update routes.py to add a DELETE method if needed, or reuse it.
-          // Actually in v2 database we didn't declare delete, but let's look at backend/v2/routes.py. We can add a delete endpoint or just delete it locally in the database.
-          // Let's implement DELETE /api/v2/jobs/{job_id} in backend/v2/routes.py to be clean! Let's do that right after.
+        const res = await fetch(`http://127.0.0.1:8000/api/v2/jobs/${jobId}`, {
           method: "DELETE"
         });
-        // Wait! The endpoint is DELETE /api/jobs/{job_id} which deletes from sentinel_ai.db.
-        // Let's add a DELETE route for v2 jobs in routes.py.
-        const res2 = await fetch(`http://127.0.0.1:8000/api/v2/jobs/${jobId}`, {
-          method: "DELETE"
-        });
-        if (res2.ok) {
+        if (res.ok) {
           fetchJobs();
         }
       } catch (err) {

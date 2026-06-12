@@ -49,7 +49,10 @@ def create_analysis_job(
     if ext.lower() not in [".apk", ".zip"]:
         ext = ".apk"
         
-    secure_filename = f"{uuid.uuid4().hex}{ext}"
+    if "simulated_" in original_filename:
+        secure_filename = f"simulated_{uuid.uuid4().hex}{ext}"
+    else:
+        secure_filename = f"{uuid.uuid4().hex}{ext}"
     temp_path = os.path.join(UPLOAD_DIR, secure_filename)
     
     sha256_hash = hashlib.sha256()

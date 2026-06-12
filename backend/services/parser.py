@@ -102,17 +102,42 @@ def scan_file_content(content: str, file_path: str) -> List[Dict[str, Any]]:
                 break  # Log once per API category per file
     return detected
 
-def parse_apk(apk_path: str) -> Dict[str, Any]:
+def parse_apk(apk_path: str, package_only: bool = False) -> Dict[str, Any]:
     """
     Main APK Analysis Engine.
     Uses: Androguard, APKTool, and JADX to decompile and extract evidence.
     Gracefully falls back to pure-Python parsing if external tools are missing.
     """
+    evidence = {
+        "package_name": "unknown.package",
+        "manifest": {
+            "package": "unknown.package",
+            "permissions": [],
+            "activities": [],
+            "services": [],
+            "receivers": []
+        },
+        "permissions": [],
+        "apis_detected": [],
+        "apis": [],
+        "urls": [],
+        "services": [],
+        "activities": [],
+        "certificate_info": {
+            "issuer": "unknown",
+            "subject": "unknown",
+            "serial_number": "unknown",
+            "hash_algorithm": "unknown"
+        },
+        "obfuscation_indicators": [],
+        "file_tree": []
+    }
+
     # High-fidelity simulated APK analysis reports
     if "simulated_" in apk_path:
         filename = os.path.basename(apk_path).lower()
         if "anubis" in filename:
-            return {
+            evidence.update({
                 "package_name": "com.banking.trojan.anubis",
                 "manifest": {
                     "package": "com.banking.trojan.anubis",
@@ -133,7 +158,6 @@ def parse_apk(apk_path: str) -> Dict[str, Any]:
                     "android.permission.INTERNET"
                 ],
                 "apis_detected": ["ACCESSIBILITY_ABUSE", "SMS_RECEIVE"],
-                "apis": [],
                 "urls": ["http://194.26.135.84/api/v2"],
                 "services": ["com.banking.trojan.anubis.AccessibilityServiceHijacker"],
                 "activities": ["com.banking.trojan.anubis.MainActivity"],
@@ -145,9 +169,9 @@ def parse_apk(apk_path: str) -> Dict[str, Any]:
                 },
                 "obfuscation_indicators": ["Reflection dynamic API invocation"],
                 "file_tree": ["AndroidManifest.xml", "classes.dex"]
-            }
+            })
         elif "sharkbot" in filename:
-            return {
+            evidence.update({
                 "package_name": "com.helper.update.utility",
                 "manifest": {
                     "package": "com.helper.update.utility",
@@ -168,7 +192,6 @@ def parse_apk(apk_path: str) -> Dict[str, Any]:
                     "android.permission.INTERNET"
                 ],
                 "apis_detected": ["SMS_RECEIVE", "DYNAMIC_LOADING"],
-                "apis": [],
                 "urls": ["fast-update-bank.online"],
                 "services": ["com.helper.update.utility.OverlayLoader"],
                 "activities": ["com.helper.update.utility.UpdateActivity"],
@@ -180,9 +203,9 @@ def parse_apk(apk_path: str) -> Dict[str, Any]:
                 },
                 "obfuscation_indicators": ["Dynamic Code Loading (DexClassLoader) usage"],
                 "file_tree": ["AndroidManifest.xml", "classes.dex"]
-            }
+            })
         elif "cerberus" in filename:
-            return {
+            evidence.update({
                 "package_name": "com.flash.utility.service",
                 "manifest": {
                     "package": "com.flash.utility.service",
@@ -203,7 +226,6 @@ def parse_apk(apk_path: str) -> Dict[str, Any]:
                     "android.permission.INTERNET"
                 ],
                 "apis_detected": ["ACCESSIBILITY_ABUSE", "SMS_RECEIVE"],
-                "apis": [],
                 "urls": ["http://phish-guard-portal.xyz"],
                 "services": ["com.flash.utility.service.KeylogService"],
                 "activities": ["com.flash.utility.service.MainActivity"],
@@ -215,10 +237,36 @@ def parse_apk(apk_path: str) -> Dict[str, Any]:
                 },
                 "obfuscation_indicators": ["Reflection dynamic API invocation"],
                 "file_tree": ["AndroidManifest.xml", "classes.dex"]
+            })
+        
+        if package_only:
+            return {
+                "package_name": evidence["package_name"],
+                "manifest": {"package": evidence["package_name"]},
+                "permissions": [],
+                "apis_detected": [],
+                "apis": [],
+                "urls": [],
+                "services": [],
+                "activities": [],
+                "certificate_info": {},
+                "obfuscation_indicators": [],
+                "file_tree": []
             }
+        return evidence
             
     if not zipfile.is_zipfile(apk_path):
         raise ValueError("Invalid file format. File is not a valid ZIP/APK archive.")
+        
+    if package_only:
+        if HAS_ANDROGUARD:
+            try:
+                apk_obj = APK(apk_path)
+                evidence["package_name"] = apk_obj.get_package()
+                evidence["manifest"]["package"] = apk_obj.get_package()
+            except Exception:
+                pass
+        return evidence
         
     temp_dir = tempfile.mkdtemp(prefix="sentinel_analysis_")
     
