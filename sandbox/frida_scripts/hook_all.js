@@ -397,6 +397,46 @@ Java.perform(function () {
         console.warn("[Sentinel_Frida] Emulator evasion bypass hooks error: " + e.message);
     }
 
+    // Native System Property Hooking (libc.so) to bypass native emulator checks
+    try {
+        var system_property_get = Module.findExportByName("libc.so", "__system_property_get");
+        if (system_property_get) {
+            Interceptor.attach(system_property_get, {
+                onEnter: function (args) {
+                    this.name = args[0].readCString();
+                    this.value_ptr = args[1];
+                },
+                onLeave: function (retval) {
+                    var name = this.name;
+                    if (name) {
+                        var mockValues = {
+                            "ro.hardware": "nexus",
+                            "ro.product.board": "nexus",
+                            "ro.product.device": "nexus",
+                            "ro.product.name": "nexus",
+                            "ro.product.model": "Nexus 5X",
+                            "ro.product.manufacturer": "Google",
+                            "ro.product.brand": "google",
+                            "ro.build.fingerprint": "google/nexus/nexus:10/QQ3A.200805.001/6584839:user/release-keys",
+                            "ro.kernel.qemu": "0",
+                            "init.svc.goldfish-logcat": "",
+                            "ro.boot.hardware": "nexus"
+                        };
+                        if (mockValues.hasOwnProperty(name)) {
+                            var mockVal = mockValues[name];
+                            this.value_ptr.writeUtf8String(mockVal);
+                            retval.replace(mockVal.length);
+                            console.log("[Sentinel_Frida] Native Libc property bypass: " + name + " -> " + mockVal);
+                        }
+                    }
+                }
+            });
+            console.log("[Sentinel_Frida] Native system property hooks attached.");
+        }
+    } catch (e) {
+        console.warn("[Sentinel_Frida] Native system property hooks error: " + e.message);
+    }
+
     // ────────────────────────────────────────────────────────
     // CATEGORY 8: NATIVE LIBRARY & WEBVIEW HOOKS
     // ────────────────────────────────────────────────────────
