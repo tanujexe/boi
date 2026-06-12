@@ -15,13 +15,17 @@ import { Menu, X } from "lucide-react";
 function App() {
   const [jobId, setJobId] = useState(null);
   const [currentPage, setCurrentPage] = useState("upload");
+  const [isV2, setIsV2] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Helper to format/update the hash URL
   const updateHash = (page, currentJobId) => {
     const query = currentJobId ? `?jobId=${currentJobId}` : "";
-    window.location.hash = `${page}${query}`;
+    const newHash = `#${page}${query}`;
+    if (window.location.hash !== newHash) {
+      window.location.hash = newHash;
+    }
   };
 
   // Sync state with URL hash on mount and when hash changes
@@ -51,7 +55,12 @@ function App() {
         if (urlJobId !== jobId) {
           setJobId(urlJobId);
         }
-        setCurrentPage(page);
+        if (urlJobId) {
+          setIsV2(page.startsWith("v2-"));
+        }
+        if (page !== currentPage) {
+          setCurrentPage(page);
+        }
       } else {
         // Fallback for invalid hashes
         updateHash("upload", null);
@@ -66,16 +75,23 @@ function App() {
     return () => {
       window.removeEventListener("hashchange", handleHashChange);
     };
-  }, [jobId]);
+  }, [jobId, currentPage]);
 
   const resetUpload = () => {
     setJobId(null);
     const targetPage = currentPage && currentPage.startsWith("v2-") ? "v2-upload" : "upload";
+    setCurrentPage(targetPage);
     updateHash(targetPage, null);
     setSidebarOpen(false);
   };
 
   const setPage = (page) => {
+    setCurrentPage(page);
+    if (["dashboard", "evidence", "threat-intel", "report"].includes(page)) {
+      setIsV2(false);
+    } else if (page.startsWith("v2-")) {
+      setIsV2(true);
+    }
     updateHash(page, jobId);
     setSidebarOpen(false);
   };
@@ -87,6 +103,8 @@ function App() {
           <UploadPage
             onSelectJob={(id) => {
               setJobId(id);
+              setIsV2(false);
+              setCurrentPage("dashboard");
               updateHash("dashboard", id);
             }}
             onStartLoading={() => setLoading(true)}
@@ -107,6 +125,8 @@ function App() {
           <CampaignTriage
             onSelectJob={(id) => {
               setJobId(id);
+              setIsV2(false);
+              setCurrentPage("dashboard");
               updateHash("dashboard", id);
             }}
             setPage={setPage}
@@ -119,6 +139,8 @@ function App() {
           <V2UploadPage
             onSelectJob={(id) => {
               setJobId(id);
+              setIsV2(true);
+              setCurrentPage("v2-results");
               updateHash("v2-results", id);
             }}
             onStartLoading={() => setLoading(true)}
@@ -160,6 +182,7 @@ function App() {
       <Sidebar
         currentPage={currentPage}
         jobId={jobId}
+        isV2={isV2}
         setPage={setPage}
         resetUpload={resetUpload}
         sidebarOpen={sidebarOpen}

@@ -12,31 +12,31 @@ import {
   Activity
 } from "lucide-react";
 
-export default function Sidebar({ currentPage, jobId, setPage, resetUpload, sidebarOpen, setSidebarOpen }) {
+export default function Sidebar({ currentPage, jobId, isV2, setPage, resetUpload, sidebarOpen, setSidebarOpen }) {
   const navItems = [
     {
       name: "Dashboard",
       icon: LayoutDashboard,
       pageKey: "dashboard",
-      disabled: false
+      disabled: !jobId || isV2
     },
     {
       name: "Evidence Explorer",
       icon: FileSearch,
       pageKey: "evidence",
-      disabled: false
+      disabled: !jobId || isV2
     },
     {
       name: "Threat Intelligence",
       icon: Fingerprint,
       pageKey: "threat-intel",
-      disabled: false
+      disabled: !jobId || isV2
     },
     {
       name: "Investigation Report",
       icon: FileText,
       pageKey: "report",
-      disabled: false
+      disabled: !jobId || isV2
     }
   ];
 
@@ -66,13 +66,13 @@ export default function Sidebar({ currentPage, jobId, setPage, resetUpload, side
       name: "Telemetry Trace",
       icon: Activity,
       pageKey: "v2-results",
-      disabled: !jobId
+      disabled: !jobId || !isV2
     },
     {
       name: "AI Investigation",
       icon: FileText,
       pageKey: "v2-report",
-      disabled: !jobId
+      disabled: !jobId || !isV2
     }
   ];
 
@@ -142,10 +142,10 @@ export default function Sidebar({ currentPage, jobId, setPage, resetUpload, side
                 return (
                   <div
                     key={item.name}
-                    className="flex items-center space-x-3 px-3 py-2 rounded-xl text-slate-700 cursor-not-allowed text-xs font-sans opacity-25 select-none"
+                    className="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-slate-650 cursor-not-allowed text-xs font-sans opacity-25 select-none border border-transparent"
                   >
-                    <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>{item.name}</span>
+                    <Icon className="w-4 h-4 flex-shrink-0 text-slate-600" />
+                    <span className="font-sans">{item.name}</span>
                   </div>
                 );
               }
@@ -183,10 +183,10 @@ export default function Sidebar({ currentPage, jobId, setPage, resetUpload, side
                 return (
                   <div
                     key={item.name}
-                    className="flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-slate-700 cursor-not-allowed text-xs font-sans opacity-25 select-none"
+                    className="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-slate-650 cursor-not-allowed text-xs font-sans opacity-25 select-none border border-transparent"
                   >
-                    <Icon className="w-4 h-4 flex-shrink-0" />
-                    <span>{item.name}</span>
+                    <Icon className="w-4 h-4 flex-shrink-0 text-slate-600" />
+                    <span className="font-sans">{item.name}</span>
                   </div>
                 );
               }

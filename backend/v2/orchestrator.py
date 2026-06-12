@@ -284,25 +284,32 @@ def run_simulated_sandbox(db: Session, job_id: str, job: V2Job, captured_events:
     
     if "anubis" in filename:
         events_to_emit = [
-            ("evasion_emulator", "Build.HARDWARE queried", {"check_type": "Build.HARDWARE", "value": "goldfish"}, 0.3, True),
-            ("crypto_op", "AES Cipher initialized", {"algorithm": "AES/CBC/PKCS5Padding"}, 0.2, False),
-            ("file_write", "File written to storage", {"path": "/sdcard/Download/payload.dex"}, 0.4, True),
-            ("dex_load", "Dynamic Dalvik bytecode load", {"path": "/sdcard/Download/payload.dex"}, 0.6, True),
-            ("network_request", "C2 check-in request", {"url": "http://194.26.135.84/api/v2/gate.php", "method": "POST"}, 0.5, True),
+            ("evasion_emulator", "Build.HARDWARE queried", {"check_type": "Build.HARDWARE", "value": "goldfish"}, 0.2, True),
+            ("crypto_op", "AES Cipher initialized", {"algorithm": "AES/CBC/PKCS5Padding"}, 0.1, False),
+            ("crypto_key", "Symmetric key generated", {"algorithm": "AES", "key_bytes": "e8a109f29108bc8173090b81"}, 0.4, True),
+            ("file_write", "File written to storage", {"path": "/sdcard/Download/payload.dex"}, 0.3, True),
+            ("dex_load", "Dynamic Dalvik bytecode load", {"path": "/sdcard/Download/payload.dex"}, 0.5, True),
+            ("dns_query", "DNS hostname resolved", {"domain": "anubis-c2-portal.net"}, 0.2, True),
+            ("network_request", "C2 check-in request", {"url": "http://194.26.135.84/api/v2/gate.php", "method": "TCP_CONNECT", "ip": "194.26.135.84", "port": 80}, 0.5, True),
+            ("clipboard_access", "Clipboard read", {"action": "read"}, 0.3, True),
             ("sms_send", "SMS transmission event", {"dest": "+1-555-0199", "text": "Stolen SMS OTP: 489201"}, 0.8, True),
         ]
     elif "sharkbot" in filename:
         events_to_emit = [
-            ("evasion_root", "SU binary check", {"check_type": "root_existence_check", "path": "/system/xbin/su"}, 0.3, True),
-            ("network_request", "C2 configuration fetch", {"url": "https://fast-update-bank.online/api/config", "method": "GET"}, 0.5, True),
-            ("dex_load", "Dynamic utility load", {"path": "/data/user/0/com.helper.update.utility/app_dex/update.jar"}, 0.6, True),
+            ("evasion_root", "SU binary check", {"check_type": "su_existence_check", "path": "/system/xbin/su"}, 0.2, True),
+            ("dns_query", "DNS operator lookups", {"domain": "fast-update-bank.online"}, 0.2, True),
+            ("network_request", "C2 configuration fetch", {"url": "https://fast-update-bank.online/api/config", "method": "TCP_CONNECT", "ip": "104.22.4.15", "port": 443}, 0.4, True),
+            ("dex_load", "Dynamic utility load", {"path": "/data/user/0/com.helper.update.utility/app_dex/update.jar"}, 0.5, True),
+            ("contacts_read", "Contacts resolver read", {"uri": "content://com.android.contacts/contacts"}, 0.4, True),
             ("sms_send", "SMS exfiltration trigger", {"dest": "+1-202-555-0143", "text": "Intercepted Bank SMS: Auth code 77391"}, 0.8, True)
         ]
     elif "cerberus" in filename:
         events_to_emit = [
-            ("evasion_debugger", "Debugger check bypassed", {"check_type": "isDebuggerConnected"}, 0.3, True),
-            ("shell_exec", "Spawn shell executor", {"command": "su -c 'pm list packages'"}, 0.5, True),
-            ("network_request", "C2 telemetry drop", {"url": "http://phish-guard-portal.xyz/log", "method": "POST"}, 0.5, True),
+            ("evasion_debugger", "Debugger check bypassed", {"check_type": "isDebuggerConnected"}, 0.2, True),
+            ("shell_exec", "Spawn shell executor", {"command": "su -c 'pm list packages'"}, 0.4, True),
+            ("dns_query", "DNS gate query", {"domain": "phish-guard-portal.xyz"}, 0.2, True),
+            ("network_request", "C2 telemetry drop", {"url": "http://phish-guard-portal.xyz/log", "method": "TCP_CONNECT", "ip": "185.190.140.12", "port": 80}, 0.4, True),
+            ("overlay_created", "phishing overlay injected", {"type": 2038, "flags": 8}, 0.7, True),
             ("sms_send", "SMS forward", {"dest": "+44-7911-123456", "text": "Cerberus SMS payload intercept"}, 0.8, True)
         ]
     else:
@@ -377,7 +384,15 @@ def run_live_sandbox(db: Session, job_id: str, job: V2Job, apk_path: str, captur
 
     check_cancellation(job_id, db)
 
-    # 3. Enable frida-server
+    # 3. Import and execute UI automation (Permissions & Accessibility Setup)
+    from v2.automation import grant_app_permissions, force_enable_accessibility, automate_ui_interactions, trigger_deep_links
+    try:
+        grant_app_permissions(job.package_name)
+        force_enable_accessibility(job.package_name)
+    except Exception as auto_err:
+        broadcast_v2_log(job_id, f"[WARNING] Permission setup failed: {str(auto_err)}", "WARN")
+
+    # 4. Enable frida-server
     broadcast_v2_log(job_id, "Checking frida-server state inside AVD...")
     
     frida_running = False
@@ -403,8 +418,7 @@ def run_live_sandbox(db: Session, job_id: str, job: V2Job, apk_path: str, captur
 
     check_cancellation(job_id, db)
 
-    # 4. Attach Frida
-    # Validation of package name
+    # 5. Attach Frida
     if not job.package_name or job.package_name == "unknown.package" or "." not in job.package_name:
         broadcast_v2_log(job_id, f"[WARNING] Invalid package name '{job.package_name}' for instrumentation. Falling back to simulation.", "WARN")
         raise ValueError(f"Invalid package name for Frida spawn: '{job.package_name}'")
@@ -493,6 +507,14 @@ def run_live_sandbox(db: Session, job_id: str, job: V2Job, apk_path: str, captur
     job.progress = 60
     db.commit()
 
+    # Trigger custom deep links if found in static results
+    static_urls = job.static_findings.get("urls", []) if job.static_findings else []
+    if static_urls:
+        try:
+            trigger_deep_links(job.package_name, static_urls)
+        except Exception:
+            pass
+
     # Wait loop + trigger actions to exercise UI
     elapsed_analysis = 0
     while elapsed_analysis < job.timeout_seconds:
@@ -501,15 +523,18 @@ def run_live_sandbox(db: Session, job_id: str, job: V2Job, apk_path: str, captur
         check_cancellation(job_id, db)
         elapsed_analysis += 10  
         
-        # Simulate touch events via monkey / adb
-        subprocess.run([ADB_PATH, "shell", "monkey", "-p", job.package_name, "--pct-touch", "100", "5"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Execute UI interactions sequence
+        try:
+            automate_ui_interactions(job.package_name)
+        except Exception:
+            pass
         
         pct = 60 + int((elapsed_analysis / job.timeout_seconds) * 20)
         job.progress = pct
         db.commit()
         broadcast_v2_log(job_id, f"Telemetry capture active... ({elapsed_analysis}/{job.timeout_seconds}s)")
 
-    # 5. Detach and cleanup app
+    # 6. Detach and cleanup app
     broadcast_v2_log(job_id, "Sandbox analysis session timer expired. Cleaning up guest workspace...")
     job.status = "COLLECTING"
     job.current_stage = "COLLECTING"
