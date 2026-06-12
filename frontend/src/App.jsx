@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import UploadPage from "./components/UploadPage";
 import DashboardView from "./components/DashboardView";
@@ -18,18 +18,65 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Helper to format/update the hash URL
+  const updateHash = (page, currentJobId) => {
+    const query = currentJobId ? `?jobId=${currentJobId}` : "";
+    window.location.hash = `${page}${query}`;
+  };
+
+  // Sync state with URL hash on mount and when hash changes
+  useEffect(() => {
+    const handleHashChange = () => {
+      const rawHash = window.location.hash.replace("#", "");
+      if (!rawHash) {
+        // Default page route if hash is empty
+        updateHash(currentPage, jobId);
+        return;
+      }
+
+      const [page, queryString] = rawHash.split("?");
+      let urlJobId = null;
+      if (queryString) {
+        const params = new URLSearchParams(queryString);
+        urlJobId = params.get("jobId");
+      }
+
+      const validPages = [
+        "upload", "dashboard", "evidence", "threat-intel", 
+        "report", "campaigns", "api-keys", "v2-upload", 
+        "v2-results", "v2-report"
+      ];
+
+      if (validPages.includes(page)) {
+        if (urlJobId !== jobId) {
+          setJobId(urlJobId);
+        }
+        setCurrentPage(page);
+      } else {
+        // Fallback for invalid hashes
+        updateHash("upload", null);
+      }
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    
+    // Initial sync
+    handleHashChange();
+
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+    };
+  }, [jobId]);
+
   const resetUpload = () => {
     setJobId(null);
-    if (currentPage && currentPage.startsWith("v2-")) {
-      setCurrentPage("v2-upload");
-    } else {
-      setCurrentPage("upload");
-    }
+    const targetPage = currentPage && currentPage.startsWith("v2-") ? "v2-upload" : "upload";
+    updateHash(targetPage, null);
     setSidebarOpen(false);
   };
 
   const setPage = (page) => {
-    setCurrentPage(page);
+    updateHash(page, jobId);
     setSidebarOpen(false);
   };
 
@@ -40,7 +87,7 @@ function App() {
           <UploadPage
             onSelectJob={(id) => {
               setJobId(id);
-              setCurrentPage("dashboard");
+              updateHash("dashboard", id);
             }}
             onStartLoading={() => setLoading(true)}
             onStopLoading={() => setLoading(false)}
@@ -60,7 +107,7 @@ function App() {
           <CampaignTriage
             onSelectJob={(id) => {
               setJobId(id);
-              setCurrentPage("dashboard");
+              updateHash("dashboard", id);
             }}
             setPage={setPage}
           />
@@ -72,7 +119,7 @@ function App() {
           <V2UploadPage
             onSelectJob={(id) => {
               setJobId(id);
-              setCurrentPage("v2-results");
+              updateHash("v2-results", id);
             }}
             onStartLoading={() => setLoading(true)}
             onStopLoading={() => setLoading(false)}
